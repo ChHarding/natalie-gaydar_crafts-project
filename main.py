@@ -1,4 +1,5 @@
 import pandas as pd
+import streamlit as st
 import asyncio
 import time
 import asyncio
@@ -18,23 +19,14 @@ def get_by_user_input(craft_data):
                 'Parties & Weddings', 'Photography', 'Printmaking', 'Relationships', 'Reuse', 'Science', 'Sewing', 'Soapmaking', 
                 'Speakers', 'Tools', 'Toys & Games', 'Wallets', 'Water', 'Wearables', 'Woodworking']
 
-    print("Available Craft Categories:")
-    print(categories)
-
-    print("Choose a Category, or press Enter to include all")
-    subcategory = input("Category: ")
+    subcategory = st.selectbox("Category:", [""] + categories)
     if subcategory == "":
         subcategory = None
 
-    print("How many projects do you want to see?")
-    number_of_results_input = input("Number (1-20): ")
-    number_of_results = int(number_of_results_input)
+    number_of_results = st.slider("Number (1-20):", 1, 20, 5)
 
-    choice = input("Enter 1 for most viewed or 2 for most favorited: ")
-    if choice == "1":
-        sort_by_favorite = False
-    else:
-        sort_by_favorite = True
+    choice = st.selectbox("Sort by:", ["Most Viewed", "Most Favorited"], index=0)
+    sort_by_favorite = choice == "Most Favorited"
 
     if sort_by_favorite:
         sort_category = "Favorites"
@@ -59,19 +51,19 @@ async def auto_scroll(page, iterations=12, pause=0.75):
     for i in range(iterations):
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await asyncio.sleep(pause)
-        print(".", end="", flush=True)  # Print dot for each scroll
+        st.write(".", end="")  # Print dot for each scroll
         h = await page.evaluate("document.body.scrollHeight")
         if h == last_h:
-            print(f" Done!")
+            st.write(" Done!")
             break
         last_h = h
     else:
-        print(" Done!")  # If we completed all iterations
+        st.write(" Done!")  # If we completed all iterations
 
 async def scrape_URL_for_text(url):
   
     timeout = 60000  # milliseconds
-    print("Loading page content", end="", flush=True)  # Start the progress line
+    st.write("Loading page content...")  # Start the progress line
     async with async_playwright() as p:
         # Run Playwright locally (no BrowserCat / no wss)
         browser = await p.chromium.launch(headless=True)
@@ -185,7 +177,7 @@ def extract_materials_and_instructions(text_content, project_title=""):
     """
     
     try:
-        print("Analyzing text with OpenAI...", end="", flush=True)
+        st.write("Analyzing text with OpenAI...")
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",  # or "gpt-4" if you have access
@@ -197,21 +189,20 @@ def extract_materials_and_instructions(text_content, project_title=""):
             temperature=0.0  # Lower temperature for more consistent extraction
         )
         
-        print(" Done!")
+        st.write("Done!")
         
         # Return the text response directly as a string
         result = response.choices[0].message.content.strip()
         return result
             
     except Exception as e:
-        print(f"\nError with OpenAI API: {e}")
+        st.error(f"Error with OpenAI API: {e}")
         return f"ERROR: {e}"
 
 def get_project(table):
-    print(table)
-    print("Which project would you like to see more about? Enter the index number")
-    index = input("Index:")
-    index_num = int(index) # already zero-based due to reset_index earlier
+    st.dataframe(table)
+    index = st.selectbox("Index:", range(len(table)))
+    index_num = int(index)
     
     # Get the project title and Instructables link from the table
     project_title = table.iloc[index_num]['Project-Title']
@@ -241,17 +232,36 @@ async def scrape_and_analyze(project_title, url):
     
     
 def show_intructions(project_name, instructions_text):
-    print("\n\nInstructions for", project_name)
-    print(instructions_text)
+    st.write(f"Instructions for {project_name}")
+    st.text_area("Project Instructions", instructions_text, height=400, label_visibility="collapsed")
      
 
 # MAIN
+st.title("Version 2 Progress Report A")
 
 craft_data = pd.read_csv(r"data\projects_craft.csv")
 
-# User input/interction
+if 'show_table' not in st.session_state:
+    st.session_state.show_table = False
+
 top_viewed = get_by_user_input(craft_data)
-project_title, url = get_project(top_viewed)
-print(f"Selected project: {project_title}, please be patient while we fetch the instructions...")
-instructions_text = asyncio.run(scrape_and_analyze(project_title, url))
-show_intructions(project_title, instructions_text)
+
+if st.button("Show Projects", type="primary"):
+    st.session_state.show_table = True
+
+# Show the table and second button if first button was pressed
+if st.session_state.show_table:
+    project_title, url = get_project(top_viewed)
+    
+    if st.button("Get Instructions", type="secondary"):
+        st.write(f"Selected project: {project_title}, please be patient while we fetch the instructions...")
+        
+        # Use try-except to handle async issues
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+            instructions_text = asyncio.run(scrape_and_analyze(project_title, url))
+            show_intructions(project_title, instructions_text)
+        except Exception as e:
+            st.error(f"Error fetching instructions: {str(e)}")
+            st.write("This might be due to async/Playwright compatibility issues with Streamlit.")
