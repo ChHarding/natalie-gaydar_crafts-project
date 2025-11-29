@@ -7,83 +7,81 @@ from keys import OPENAI_API_KEY
 
 def scrape_URL_for_text(url):
     timeout = 60000
-    st.write("Loading page content...")
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1366, "height": 900},
-        )
-        page = context.new_page()
-        
-        # Speed: skip heavy assets that aren't needed for text/HTML extraction
-        context.route("**/*", lambda route: route.abort()
-                      if route.request.resource_type in {"image", "media", "font"}
-                      else route.continue_())
-
-        # Navigate and wait for the page to quiet down
-        page.goto(url, wait_until="networkidle", timeout=timeout)
-
-        # Try to dismiss any cookie banner (best-effort; ignore errors)
-        for selector in [
-            "button:has-text('Accept')",
-            "button:has-text('I Agree')",
-            "text=/accept all cookies/i",
-        ]:
-            try:
-                page.locator(selector).first.click(timeout=2000)
-                break
-            except Exception:
-                pass
-
-        # 1) Fully rendered HTML (serialized DOM).  <-- "true" HTML after JS runs
-        rendered_html = page.content()
-
-        # 2) Readable text (tags stripped) - try to target the main article first
-        selectors = ['article', 'main', '[role=main]', '[itemprop=articleBody]', '.article', '.post', '.entry-content', '.content']
-        readable_text = ""
-        for s in selectors:
-            try:
-                el = page.query_selector(s)
-                if el:
-                    # Remove all anchor tags from this element before getting text
-                    page.evaluate(f"""
-                        document.querySelectorAll('{s} a').forEach(a => a.remove());
-                    """)
-                    txt = (el.inner_text() or "").strip()
-                    if len(txt) > 100:
-                        readable_text = re.sub(r'\n{3,}', '\n\n', txt).strip()
-                        break
-            except Exception:
-                pass
-
-        if not readable_text:
-            # Fallback: clone body and remove likely non-article regions (header/footer/nav/aside/sidebar)
-            readable_text = page.evaluate(
-                """() => {
-                    const clone = document.body.cloneNode(true);
-                    const removeSel = ['header','footer','nav','aside','[class*="sidebar"]','[class*="cookie"]','[class*="masthead"]','a'];
-                    removeSel.forEach(sel => {
-                        clone.querySelectorAll(sel).forEach(n => n.remove());
-                    });
-                    return (clone.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
-                }"""
+    with st.spinner("Loading page content..."):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1366, "height": 900},
             )
+            page = context.new_page()
+            
+            # Speed: skip heavy assets that aren't needed for text/HTML extraction
+            context.route("**/*", lambda route: route.abort()
+                          if route.request.resource_type in {"image", "media", "font"}
+                          else route.continue_())
 
-        fname = "data\\" + url.split("/")[-2] + ".txt"
-        with open(fname, "w", encoding="utf-8") as f:
-            f.write(readable_text)
+            # Navigate and wait for the page to quiet down
+            page.goto(url, wait_until="networkidle", timeout=timeout)
 
-        browser.close()
+            # Try to dismiss any cookie banner (best-effort; ignore errors)
+            for selector in [
+                "button:has-text('Accept')",
+                "button:has-text('I Agree')",
+                "text=/accept all cookies/i",
+            ]:
+                try:
+                    page.locator(selector).first.click(timeout=2000)
+                    break
+                except Exception:
+                    pass
 
-        return readable_text
+            # 1) Fully rendered HTML (serialized DOM).  <-- "true" HTML after JS runs
+            rendered_html = page.content()
 
+            # 2) Readable text (tags stripped) - try to target the main article first
+            selectors = ['article', 'main', '[role=main]', '[itemprop=articleBody]', '.article', '.post', '.entry-content', '.content']
+            readable_text = ""
+            for s in selectors:
+                try:
+                    el = page.query_selector(s)
+                    if el:
+                        # Remove all anchor tags from this element before getting text
+                        page.evaluate(f"""
+                            document.querySelectorAll('{s} a').forEach(a => a.remove());
+                        """)
+                        txt = (el.inner_text() or "").strip()
+                        if len(txt) > 100:
+                            readable_text = re.sub(r'\n{3,}', '\n\n', txt).strip()
+                            break
+                except Exception:
+                    pass
 
+            if not readable_text:
+                # Fallback: clone body and remove likely non-article regions (header/footer/nav/aside/sidebar)
+                readable_text = page.evaluate(
+                    """() => {
+                        const clone = document.body.cloneNode(true);
+                        const removeSel = ['header','footer','nav','aside','[class*="sidebar"]','[class*="cookie"]','[class*="masthead"]','a'];
+                        removeSel.forEach(sel => {
+                            clone.querySelectorAll(sel).forEach(n => n.remove());
+                        });
+                        return (clone.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
+                    }"""
+                )
+
+            fname = "data\\" + url.split("/")[-2] + ".txt"
+            with open(fname, "w", encoding="utf-8") as f:
+                f.write(readable_text)
+
+            browser.close()
+            
+            return readable_text
 def extract_materials_and_instructions(text_content, project_title=""):
     # Initialize OpenAI client (make sure to set your API key)
     client = OpenAI(
@@ -109,19 +107,16 @@ def extract_materials_and_instructions(text_content, project_title=""):
     """
     
     try:
-        st.write("Analyzing text with OpenAI...")
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # or "gpt-4" if you have access
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts craft project information. Respond with clean, plain text formatting."},
-                {"role": "user", "content": prompt}
-            ],
-            #max_tokens=2000,
-            temperature=0.0  # Lower temperature for more consistent extraction
-        )
-        
-        st.write("Done!")
+        with st.spinner("Analyzing text with OpenAI..."):
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",  # or "gpt-4" if you have access
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts craft project information. Respond with clean, plain text formatting."},
+                    {"role": "user", "content": prompt}
+                ],
+                #max_tokens=2000,
+                temperature=0.0  # Lower temperature for more consistent extraction
+            )
         
         # Return the text response directly as a string
         result = response.choices[0].message.content.strip()
