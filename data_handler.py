@@ -1,3 +1,12 @@
+import pandas as pd
+import streamlit as st
+
+
+@st.cache_data
+def load_data():
+    return pd.read_csv(r"data\projects_craft.csv")
+
+
 def get_by_user_input(craft_data):
     # First remove duplicate projects
     craft_data = craft_data.drop_duplicates(subset=['Project-Title'], keep='first')
@@ -9,23 +18,14 @@ def get_by_user_input(craft_data):
                 'Parties & Weddings', 'Photography', 'Printmaking', 'Relationships', 'Reuse', 'Science', 'Sewing', 'Soapmaking', 
                 'Speakers', 'Tools', 'Toys & Games', 'Wallets', 'Water', 'Wearables', 'Woodworking']
 
-    print("Available Craft Categories:")
-    print(categories)
-
-    print("Choose a Category, or press Enter to include all")
-    subcategory = input("Category: ")
+    subcategory = st.selectbox("Category:", [""] + categories)
     if subcategory == "":
         subcategory = None
 
-    print("How many projects do you want to see?")
-    number_of_results_input = input("Number (1-20): ")
-    number_of_results = int(number_of_results_input)
+    number_of_results = st.slider("Number (1-20):", 1, 20, 5)
 
-    choice = input("Enter 1 for most viewed or 2 for most favorited: ")
-    if choice == "1":
-        sort_by_favorite = False
-    else:
-        sort_by_favorite = True
+    choice = st.selectbox("Sort by:", ["Most Viewed", "Most Favorited"], index=0)
+    sort_by_favorite = choice == "Most Favorited"
 
     if sort_by_favorite:
         sort_category = "Favorites"
@@ -36,5 +36,9 @@ def get_by_user_input(craft_data):
         filtered_data = craft_data[craft_data['Subcategory'] == subcategory]
         top_viewed = filtered_data.nlargest(number_of_results, sort_category)
     else:
-        top_viewed = craft_data.nlargest(number_of_results, sort_category)
+        top_viewed = craft_data.nlargest(number_of_results, sort_category) 
+    
+    # CH reindex the resulting DataFrame to have sequential indexes starting from 0
+    top_viewed = top_viewed.reset_index(drop=True)
+
     return top_viewed
