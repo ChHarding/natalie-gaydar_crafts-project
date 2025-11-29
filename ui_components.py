@@ -16,4 +16,4 @@ def get_project(table):
 
 def show_intructions(project_name, instructions_text):
     st.write(f"Instructions for {project_name}")
-    st.text_area("Project Instructions", instructions_text, height=400, label_visibility="collapsed")
+    st.text_area("Project Instructions", instructions_text, height=1000, label_visibility="collapsed")

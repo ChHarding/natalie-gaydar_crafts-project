@@ -10,6 +10,13 @@ from scraper import scrape_and_analyze
 from data_handler import load_data, get_by_user_input
 from ui_components import get_project, show_intructions
 
+# Configure page layout to use full width
+st.set_page_config(
+    page_title="Craft Today!",
+    page_icon="🧶", 
+    layout="wide"
+)
+
 # MAIN APP
 st.title("Craft Today!")
 
@@ -28,7 +35,7 @@ if st.session_state.show_table:
     project_title, url = get_project(top_viewed)
     
     if st.button("Get Instructions", type="secondary"):
-        st.write(f"Selected project: {project_title}, please be patient while we fetch the instructions...")
+        st.write(f"Selected project: {project_title}")
         
         try:
             instructions_text = scrape_and_analyze(project_title, url)  # No asyncio.run needed
